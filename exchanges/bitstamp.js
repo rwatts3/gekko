@@ -2,6 +2,7 @@ var Bitstamp = require("bitstamp");
 var _ = require('lodash');
 var moment = require('moment');
 var log = require('../core/log');
+var util = require('../core/util');
 
 var Trader = function(config) {
   _.bindAll(this);
@@ -45,8 +46,15 @@ Trader.prototype.getPortfolio = function(callback) {
   var args = _.toArray(arguments);
   var set = function(err, data) {
 
-    if(!_.isEmpty(data.error)) {
-      log.error('BITSTAMP API ERROR: ' + data.error);
+    if(data && data.error) {
+      err = data.error;
+    }
+
+    if(err) {
+      if(err.meta && err.meta.reason === 'API key not found')
+        util.die('Bitstamp says this API keys is invalid..');
+
+      log.error('BITSTAMP API ERROR:', err);
       return this.retry(this.getPortfolio, args);
     }
 
@@ -221,14 +229,27 @@ Trader.getCapabilities = function () {
   return {
     name: 'Bitstamp',
     slug: 'bitstamp',
-    currencies: ['USD', 'EUR'],
-    assets: ['BTC', 'EUR'],
+    currencies: ['USD', 'EUR', 'BTC'],
+    assets: ['BTC', 'EUR', 'LTC', 'ETH', 'XRP'],
     maxTradesAge: 60,
     maxHistoryFetch: null,
     markets: [
+      { pair: ['USD', 'EUR'], minimalOrder: { amount: 5, unit: 'currency' } },
+
       { pair: ['USD', 'BTC'], minimalOrder: { amount: 5, unit: 'currency' } },
       { pair: ['EUR', 'BTC'], minimalOrder: { amount: 5, unit: 'currency' } },
-      { pair: ['USD', 'EUR'], minimalOrder: { amount: 5, unit: 'currency' } }
+
+      { pair: ['USD', 'XRP'], minimalOrder: { amount: 5, unit: 'currency' } },
+      { pair: ['EUR', 'XRP'], minimalOrder: { amount: 5, unit: 'currency' } },
+      { pair: ['BTC', 'XRP'], minimalOrder: { amount: 5, unit: 'currency' } },
+
+      { pair: ['USD', 'LTC'], minimalOrder: { amount: 5, unit: 'currency' } },
+      { pair: ['EUR', 'LTC'], minimalOrder: { amount: 5, unit: 'currency' } },
+      { pair: ['BTC', 'LTC'], minimalOrder: { amount: 5, unit: 'currency' } },
+
+      { pair: ['USD', 'ETH'], minimalOrder: { amount: 5, unit: 'currency' } },
+      { pair: ['EUR', 'ETH'], minimalOrder: { amount: 5, unit: 'currency' } },
+      { pair: ['BTC', 'ETH'], minimalOrder: { amount: 5, unit: 'currency' } },
     ],
     requires: ['key', 'secret', 'username'],
     fetchTimespan: 60,

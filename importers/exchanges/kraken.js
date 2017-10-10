@@ -1,4 +1,4 @@
-var Gdax = require('gdax');
+var KrakenClient = require('kraken-api-es5')
 var util = require('../../core/util.js');
 var _ = require('lodash');
 var moment = require('moment');
@@ -8,7 +8,7 @@ var config = util.getConfig();
 
 var dirs = util.dirs();
 
-var Fetcher = require(dirs.exchanges + 'gdax');
+var Fetcher = require(dirs.exchanges + 'kraken');
 
 util.makeEventEmitter(Fetcher);
 
@@ -16,18 +16,25 @@ var end = false;
 var done = false;
 var from = false;
 
+var lastId = false;
 var prevLastId = false;
 
 var fetcher = new Fetcher(config.watch);
 
 var fetch = () => {
     fetcher.import = true;
-    fetcher.getTrades(from, handleFetch);
+
+    if (lastId) {
+        var tidAsTimestamp = lastId / 1000000;
+        fetcher.getTrades(tidAsTimestamp, handleFetch);
+    }
+    else
+        fetcher.getTrades(from, handleFetch);
 }
 
 var handleFetch = (unk, trades) => {
     var last = moment.unix(_.last(trades).date);
-    var lastId = _.last(trades).tid
+    lastId = _.last(trades).tid
 
     if(last < from) {
         log.debug('Skipping data, they are before from date', last.format());
@@ -58,3 +65,5 @@ module.exports = function (daterange) {
         fetch: fetch
     }
 }
+
+
