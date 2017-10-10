@@ -26,11 +26,10 @@ var Manager = function(conf) {
   if(error)
     util.die(error);
 
-  var exchangeMeta = checker.settings(conf);
-  this.exchangeSlug = exchangeMeta.slug;
+  this.exchangeMeta = checker.settings(conf);
 
   // create an exchange
-  var Exchange = require(dirs.exchanges + this.exchangeSlug);
+  var Exchange = require(dirs.exchanges + this.exchangeMeta.slug);
   this.exchange = new Exchange(conf);
 
   this.conf = conf;
@@ -38,14 +37,19 @@ var Manager = function(conf) {
   this.fee;
   this.action;
 
-  this.marketConfig = _.find(exchangeMeta.markets, function(p) {
-    return p.pair[0] === conf.currency && p.pair[1] === conf.asset;
+  this.marketConfig = _.find(this.exchangeMeta.markets, function(p) {
+    return _.first(p.pair) === conf.currency.toUpperCase() && _.last(p.pair) === conf.asset.toUpperCase();
   });
   this.minimalOrder = this.marketConfig.minimalOrder;
 
   this.currency = conf.currency;
   this.asset = conf.asset;
+  this.keepAsset = 0;
 
+  if(_.isNumber(conf.keepAsset)) {
+    log.debug('Keep asset is active. Will try to keep at least ' + conf.keepAsset + ' ' + conf.asset);
+    this.keepAsset = conf.keepAsset;
+  }
 
   // resets after every order
   this.orders = [];
@@ -154,23 +158,17 @@ Manager.prototype.trade = function(what, retry) {
     if(what === 'BUY') {
 
       amount = this.getBalance(this.currency) / this.ticker.ask;
-
-      price = this.ticker.bid;
-      price *= 1e8;
-      price = Math.floor(price);
-      price /= 1e8;
-
-      this.buy(amount, price);
-
+      if(amount > 0){
+          price = this.ticker.bid;
+          this.buy(amount, price);
+      }
     } else if(what === 'SELL') {
 
-      price *= 1e8;
-      price = Math.ceil(price);
-      price /= 1e8;
-
-      amount = this.getBalance(this.asset);
-      price = this.ticker.ask;
-      this.sell(amount, price);
+      amount = this.getBalance(this.asset) - this.keepAsset;
+      if(amount > 0){
+          price = this.ticker.ask;
+          this.sell(amount, price);
+      }
     }
   };
   async.series([
@@ -291,6 +289,19 @@ Manager.prototype.checkOrder = function() {
   var handleCancelResult = function(alreadyFilled) {
     if(alreadyFilled)
       return;
+
+    if(this.exchangeMeta.forceReorderDelay) {
+        //We need to wait in case a canceled order has already reduced the amount
+        var wait = 10;
+        log.debug(`Waiting ${wait} seconds before starting a new trade on ${this.exchangeMeta.name}!`);
+
+        setTimeout(
+            () => this.trade(this.action, true),
+            +moment.duration(wait, 'seconds')
+        );
+        return;
+    }
+
     this.trade(this.action, true);
   }
 
@@ -317,7 +328,7 @@ Manager.prototype.relayOrder = function(done) {
     var amount = 0;
     var date = moment(0);
 
-    _.each(res.filter(o => o.amount), order => {
+    _.each(res.filter(o => !_.isUndefined(o) && o.amount), order => {
       date = _.max([moment(order.date), date]);
       price = ((price * amount) + (order.price * order.amount)) / (order.amount + amount);
       amount += +order.amount;
